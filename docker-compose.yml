@@ -1,0 +1,27 @@
+﻿services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qa_dock_app
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+    ports:
+      - "8000:8000"
+    command: ["echo", "qa_dock service started"]
+
+# Example additional QA services (uncomment as needed):
+#  allure:
+#    image: frankescobar/allure-docker-service
+#    container_name: qa_dock_allure
+#    environment:
+#      CHECK_RESULTS_EVERY_SECONDS: 3
+#      KEEP_HISTORY: 1
+#    ports:
+#      - "5050:5050"
+#    volumes:
+#      - ./allure-results:/app/allure-results
+#      - ./allure-reports:/app/default-reports

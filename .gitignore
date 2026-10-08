@@ -1,0 +1,38 @@
+﻿# Environment variables
+.env
+*.env.local
+
+# IDE & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs & temporary files
+*.log
+logs/
+temp/
+tmp/
+
+# Docker
+docker-compose.override.yml
+
+# Test reports & artifacts
+allure-results/
+allure-report/
+test-results/
+playwright-report/
+coverage/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+env/
