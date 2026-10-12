@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Lock, Mail, ShieldCheck, Sparkles, KeyRound } from 'lucide-react';
+import { X, Lock, Mail, ShieldCheck } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../store/useAppStore';
 
@@ -11,8 +11,8 @@ interface AuthModalProps {
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const { setAuth } = useAppStore();
-  const [email, setEmail] = useState('admin@qadock.dev');
-  const [password, setPassword] = useState('Password123!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,12 +42,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     }
   };
 
-  const fillDemoUser = (userEmail: string) => {
-    setEmail(userEmail);
-    setPassword('Password123!');
-    setError(null);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
       <div className="bg-[#0f172a] border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
@@ -66,7 +60,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         </div>
 
         <div className="text-xs text-slate-400">
-          Введите учетные данные для авторизации через Keycloak / систему.
+          Введите учетные данные для авторизации в системе.
         </div>
 
         {error && (
@@ -85,7 +79,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               <input
                 type="text"
                 required
-                placeholder="admin@qadock.dev или tester"
+                placeholder="Введите логин или email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-9 pr-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-blue-500 transition-colors"
@@ -118,31 +112,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             {isLoading ? 'Проверка учетных данных...' : 'Войти в систему'}
           </button>
         </form>
-
-        {/* Demo Fast Login Buttons */}
-        <div className="pt-3 border-t border-slate-800 space-y-2">
-          <div className="text-[11px] text-slate-500 font-medium text-center">
-            Быстрый вход под тестовыми учетными записями Keycloak:
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => fillDemoUser('admin@qadock.dev')}
-              className="flex-1 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-lg text-[11px] text-blue-400 transition-all flex items-center justify-center gap-1"
-            >
-              <Sparkles className="w-3 h-3" />
-              Admin
-            </button>
-            <button
-              type="button"
-              onClick={() => fillDemoUser('tester@qadock.dev')}
-              className="flex-1 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-lg text-[11px] text-emerald-400 transition-all flex items-center justify-center gap-1"
-            >
-              <KeyRound className="w-3 h-3" />
-              Tester
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

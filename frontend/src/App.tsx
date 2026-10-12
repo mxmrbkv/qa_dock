@@ -82,27 +82,8 @@ const MainDashboard: React.FC = () => {
         return;
       }
 
-      try {
-        const loginRes = await api.post('/auth/login', {
-          email: 'admin@qadock.dev',
-          password: 'Password123!',
-        });
-        setAuth(loginRes.data.user, loginRes.data.accessToken);
-      } catch (err) {
-        try {
-          const regRes = await api.post('/auth/register', {
-            email: 'admin@qadock.dev',
-            password: 'Password123!',
-            name: 'Admin QA Dock',
-          });
-          setAuth(regRes.data.user, regRes.data.accessToken);
-        } catch (regErr) {
-          console.warn('Auto-auth fallback failed, opening Auth Modal', regErr);
-          openAuthModal();
-        }
-      } finally {
-        setIsInitializing(false);
-      }
+      openAuthModal();
+      setIsInitializing(false);
     };
 
     handleKeycloakRedirect();

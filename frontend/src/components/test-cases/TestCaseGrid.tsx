@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldAlert,
+  Sparkles,
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { api } from '../../lib/api';
@@ -31,6 +32,7 @@ export const TestCaseGrid: React.FC = () => {
   const [priorityFilter, setPriorityFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [automationFilter, setAutomationFilter] = useState('');
+  const [sharedFilter, setSharedFilter] = useState('');
   const [tagFilter, setTagFilter] = useState('');
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState('createdAt');
@@ -61,6 +63,7 @@ export const TestCaseGrid: React.FC = () => {
       priorityFilter,
       statusFilter,
       automationFilter,
+      sharedFilter,
       tagFilter,
       page,
       sortBy,
@@ -73,6 +76,7 @@ export const TestCaseGrid: React.FC = () => {
       if (priorityFilter) params.append('priority', priorityFilter);
       if (statusFilter) params.append('status', statusFilter);
       if (automationFilter) params.append('isAutomated', automationFilter);
+      if (sharedFilter) params.append('isShared', sharedFilter);
       if (tagFilter) params.append('tagId', tagFilter);
       params.append('page', page.toString());
       params.append('limit', '15');
@@ -211,6 +215,24 @@ export const TestCaseGrid: React.FC = () => {
                 {t.name}
               </option>
             ))}
+          </select>
+
+          {/* Shared Steps filter */}
+          <select
+            value={sharedFilter}
+            onChange={(e) => {
+              setSharedFilter(e.target.value);
+              setPage(1);
+            }}
+            className={cn(
+              'px-2.5 py-2 rounded-lg text-xs focus:outline-none transition-colors border',
+              sharedFilter === 'true'
+                ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300 font-semibold'
+                : 'bg-slate-900 border-slate-700/80 text-slate-300 focus:border-blue-500',
+            )}
+          >
+            <option value="">Все кейсы</option>
+            <option value="true">⚡ Только общие шаги</option>
           </select>
 
           {/* Create Button */}
@@ -357,11 +379,25 @@ export const TestCaseGrid: React.FC = () => {
 
                     {/* Title */}
                     <td className="p-3.5">
-                      <div className="font-semibold text-slate-200 group-hover:text-blue-400 transition-colors">
-                        {tc.title}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-slate-200 group-hover:text-blue-400 transition-colors">
+                          {tc.title}
+                        </span>
+                        {tc.isShared && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1 shrink-0">
+                            <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
+                            Общие шаги
+                          </span>
+                        )}
                       </div>
-                      <div className="text-[11px] text-slate-500 flex items-center gap-3 mt-0.5">
+                      <div className="text-[11px] text-slate-500 flex items-center gap-3 mt-0.5 flex-wrap">
                         <span>Шагов: {tc.steps?.length || 0}</span>
+                        {tc.steps?.some((s: any) => s.sharedTestCaseId) && (
+                          <span className="text-indigo-400/90 font-medium flex items-center gap-1">
+                            <Sparkles className="w-2.5 h-2.5" />
+                            Содержит общие шаги
+                          </span>
+                        )}
                         {tc.automationId && (
                           <span className="text-cyan-400/80 font-mono truncate max-w-xs">
                             {tc.automationId}

@@ -41,6 +41,10 @@ export class CreateTestCaseDto {
   isAutomated?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  isShared?: boolean;
+
+  @IsOptional()
   @IsString()
   automationId?: string;
 

@@ -40,6 +40,10 @@ export class UpdateTestCaseDto {
   isAutomated?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  isShared?: boolean;
+
+  @IsOptional()
   @IsString()
   automationId?: string;
 

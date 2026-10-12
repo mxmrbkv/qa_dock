@@ -370,28 +370,73 @@ export const TestRunView: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  {selectedResult.testCase?.steps?.map((step: any, idx: number) => (
-                    <div
-                      key={step.id || idx}
-                      className="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-1.5"
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <span className="w-5 h-5 rounded-full bg-blue-600/20 text-blue-400 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">
-                          {idx + 1}
-                        </span>
-                        <div className="flex-1">
-                          <div className="text-xs text-slate-200 font-medium">
-                            <span className="text-slate-500 mr-1.5">Действие:</span>
-                            {step.action}
-                          </div>
-                          <div className="text-xs text-slate-400 mt-1">
-                            <span className="text-emerald-500/80 mr-1.5 font-medium">Ожидаемый результат:</span>
-                            {step.expectedResult}
+                  {selectedResult.testCase?.steps?.map((step: any, idx: number) => {
+                    const isSharedStep = !!step.sharedTestCaseId || !!step.sharedTestCase;
+                    const subSteps = step.sharedTestCase?.steps || [];
+
+                    return (
+                      <div
+                        key={step.id || idx}
+                        className={cn(
+                          'p-3 rounded-xl border space-y-2 transition-all',
+                          isSharedStep
+                            ? 'bg-gradient-to-r from-indigo-950/30 to-slate-900 border-indigo-500/40'
+                            : 'bg-slate-900 border border-slate-800',
+                        )}
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <span
+                            className={cn(
+                              'w-5 h-5 rounded-full font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5',
+                              isSharedStep
+                                ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40'
+                                : 'bg-blue-600/20 text-blue-400',
+                            )}
+                          >
+                            {idx + 1}
+                          </span>
+                          <div className="flex-1">
+                            {isSharedStep && (
+                              <div className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                                <Sparkles className="w-2.5 h-2.5" />
+                                <span>Модуль общих шагов</span>
+                                {step.sharedTestCase?.title && (
+                                  <span className="text-slate-400 font-normal">({step.sharedTestCase.title})</span>
+                                )}
+                              </div>
+                            )}
+                            <div className="text-xs text-slate-200 font-medium">
+                              <span className="text-slate-500 mr-1.5">Действие:</span>
+                              {step.action}
+                            </div>
+                            <div className="text-xs text-slate-400 mt-1">
+                              <span className="text-emerald-500/80 mr-1.5 font-medium">Ожидаемый результат:</span>
+                              {step.expectedResult}
+                            </div>
                           </div>
                         </div>
+
+                        {/* Nested sub-steps inside shared module */}
+                        {isSharedStep && subSteps.length > 0 && (
+                          <div className="ml-7 p-2.5 rounded-lg bg-slate-950/70 border border-indigo-900/40 space-y-1.5 mt-2">
+                            <div className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                              Вложенные шаги модуля ({subSteps.length}):
+                            </div>
+                            {subSteps.map((sub: any, sIdx: number) => (
+                              <div key={sub.id || sIdx} className="text-[11px] text-slate-300 flex items-start gap-2 py-0.5">
+                                <span className="text-slate-500 font-mono text-[10px]">{sIdx + 1}.</span>
+                                <div>
+                                  <span className="text-slate-200 font-medium">{sub.action}</span>
+                                  <span className="text-slate-500 mx-1">&rarr;</span>
+                                  <span className="text-slate-400">{sub.expectedResult}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

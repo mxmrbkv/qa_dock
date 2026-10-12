@@ -118,31 +118,36 @@ model TestCase {
   priority       Priority       @default(MEDIUM)
   status         TestCaseStatus @default(ACTIVE)
   isAutomated    Boolean        @default(false) @map("is_automated")
+  isShared       Boolean        @default(false) @map("is_shared") // Флаг: общий тест-кейс (reusable shared steps)
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
   // Relations
   project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  steps          TestStep[]
+  steps          TestStep[]     @relation("TestCaseSteps")
+  usedInSteps    TestStep[]     @relation("SharedStepTestCase")
   tags           Tag[]          @relation("TestCaseTags")
   testPlans      TestPlan[]     @relation("TestPlanCases")
   testResults    TestResult[]
 
   @@index([projectId, automationId])
   @@index([projectId, status])
+  @@index([projectId, isShared])
   @@map("test_cases")
 }
 
 model TestStep {
-  id             String    @id @default(uuid())
-  testCaseId     String    @map("test_case_id")
-  action         String
-  expectedResult String    @map("expected_result")
-  stepOrder      Int       @map("step_order")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  id               String    @id @default(uuid())
+  testCaseId       String    @map("test_case_id")
+  action           String
+  expectedResult   String    @map("expected_result")
+  stepOrder        Int       @map("step_order")
+  sharedTestCaseId String?   @map("shared_test_case_id") // Ссылка на тест-кейс для общих шагов
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  testCase       TestCase  @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  testCase         TestCase  @relation("TestCaseSteps", fields: [testCaseId], references: [id], onDelete: Cascade)
+  sharedTestCase   TestCase? @relation("SharedStepTestCase", fields: [sharedTestCaseId], references: [id], onDelete: SetNull)
 
   @@index([testCaseId, stepOrder])
   @@map("test_steps")

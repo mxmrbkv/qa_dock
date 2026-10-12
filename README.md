@@ -11,6 +11,7 @@
 - 🏢 **Multi-Project Workspaces**: Complete workspace isolation with unique project keys (e.g. `QAD`, `APP`).
 - 📋 **Test Case Authoring**:
   - Drag-and-drop ordered test steps.
+  - ⚡ **Общие шаги (Shared Steps)**: переиспользование готовых тест-кейсов в качестве предусловий или шагов проверок (как вложенный модуль или через копирование шагов).
   - Multi-tag classification with custom badge colors.
   - Priority & status lifecycles (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`).
   - Preconditions, postconditions, and rich descriptions.

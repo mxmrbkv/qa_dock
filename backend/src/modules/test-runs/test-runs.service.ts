@@ -99,7 +99,19 @@ export class TestRunsService {
           include: {
             testCase: {
               include: {
-                steps: { orderBy: { stepOrder: 'asc' } },
+                steps: {
+                  orderBy: { stepOrder: 'asc' },
+                  include: {
+                    sharedTestCase: {
+                      select: {
+                        id: true,
+                        title: true,
+                        preConditions: true,
+                        steps: { orderBy: { stepOrder: 'asc' } },
+                      },
+                    },
+                  },
+                },
                 tags: true,
               },
             },

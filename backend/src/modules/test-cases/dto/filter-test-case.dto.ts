@@ -20,6 +20,10 @@ export class FilterTestCaseDto {
   isAutomated?: string;
 
   @IsOptional()
+  @IsBooleanString()
+  isShared?: string;
+
+  @IsOptional()
   @IsString()
   tagId?: string;
 

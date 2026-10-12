@@ -36,6 +36,7 @@ export class TestCasesService {
                 action: step.action,
                 expectedResult: step.expectedResult,
                 stepOrder: step.stepOrder !== undefined ? step.stepOrder : idx,
+                sharedTestCaseId: step.sharedTestCaseId || null,
               })),
             }
           : undefined,
@@ -43,6 +44,18 @@ export class TestCasesService {
       include: {
         steps: {
           orderBy: { stepOrder: 'asc' },
+          include: {
+            sharedTestCase: {
+              select: {
+                id: true,
+                title: true,
+                preConditions: true,
+                steps: {
+                  orderBy: { stepOrder: 'asc' },
+                },
+              },
+            },
+          },
         },
         tags: true,
       },
@@ -74,6 +87,10 @@ export class TestCasesService {
       where.isAutomated = filter.isAutomated === 'true';
     }
 
+    if (filter.isShared !== undefined) {
+      where.isShared = filter.isShared === 'true';
+    }
+
     if (filter.tagId) {
       where.tags = {
         some: { id: filter.tagId },
@@ -84,7 +101,7 @@ export class TestCasesService {
     const limit = filter.limit || 50;
     const skip = (page - 1) * limit;
 
-    const validSortFields = ['title', 'priority', 'status', 'createdAt', 'updatedAt', 'isAutomated'];
+    const validSortFields = ['title', 'priority', 'status', 'createdAt', 'updatedAt', 'isAutomated', 'isShared'];
     const sortBy = validSortFields.includes(filter.sortBy) ? filter.sortBy : 'createdAt';
     const sortOrder = (filter.sortOrder?.toLowerCase() === 'asc') ? 'asc' : 'desc';
 
@@ -94,6 +111,18 @@ export class TestCasesService {
         include: {
           steps: {
             orderBy: { stepOrder: 'asc' },
+            include: {
+              sharedTestCase: {
+                select: {
+                  id: true,
+                  title: true,
+                  preConditions: true,
+                  steps: {
+                    orderBy: { stepOrder: 'asc' },
+                  },
+                },
+              },
+            },
           },
           tags: true,
         },
@@ -121,6 +150,18 @@ export class TestCasesService {
       include: {
         steps: {
           orderBy: { stepOrder: 'asc' },
+          include: {
+            sharedTestCase: {
+              select: {
+                id: true,
+                title: true,
+                preConditions: true,
+                steps: {
+                  orderBy: { stepOrder: 'asc' },
+                },
+              },
+            },
+          },
         },
         tags: true,
         project: {
@@ -164,6 +205,7 @@ export class TestCasesService {
               action: step.action,
               expectedResult: step.expectedResult,
               stepOrder: step.stepOrder !== undefined ? step.stepOrder : idx,
+              sharedTestCaseId: step.sharedTestCaseId || null,
             })),
           });
         }
@@ -186,6 +228,18 @@ export class TestCasesService {
         include: {
           steps: {
             orderBy: { stepOrder: 'asc' },
+            include: {
+              sharedTestCase: {
+                select: {
+                  id: true,
+                  title: true,
+                  preConditions: true,
+                  steps: {
+                    orderBy: { stepOrder: 'asc' },
+                  },
+                },
+              },
+            },
           },
           tags: true,
         },

@@ -17,4 +17,8 @@ export class TestStepDto {
   @IsInt()
   @Min(0)
   stepOrder: number;
+
+  @IsOptional()
+  @IsString()
+  sharedTestCaseId?: string;
 }
