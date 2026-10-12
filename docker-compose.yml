@@ -1,27 +1,109 @@
-﻿services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: qa_dock_app
-    restart: unless-stopped
-    env_file:
-      - .env
-    volumes:
-      - ./:/app
-    ports:
-      - "8000:8000"
-    command: ["echo", "qa_dock service started"]
+name: qa_dock
 
-# Example additional QA services (uncomment as needed):
-#  allure:
-#    image: frankescobar/allure-docker-service
-#    container_name: qa_dock_allure
-#    environment:
-#      CHECK_RESULTS_EVERY_SECONDS: 3
-#      KEEP_HISTORY: 1
-#    ports:
-#      - "5050:5050"
-#    volumes:
-#      - ./allure-results:/app/allure-results
-#      - ./allure-reports:/app/default-reports
+services:
+  # ----------------------------------------------------
+  # 1. PostgreSQL Database Service
+  # ----------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: qa_dock_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-qa_dock}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./keycloak/init-db.sql:/docker-entrypoint-initdb.d/init-keycloak-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-qa_dock}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - qa_dock_net
+
+  # ----------------------------------------------------
+  # 2. Keycloak IAM & SSO Service
+  # ----------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    container_name: qa_dock_keycloak
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER:-postgres}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_PORT: 8080
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - qa_dock_net
+
+  # ----------------------------------------------------
+  # 3. NestJS Backend API Service
+  # ----------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: qa_dock_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-qa_dock}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-qa_dock_super_secret_jwt_key_2026}
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_PUBLIC_URL: http://localhost:8080
+      KEYCLOAK_REALM: qa-dock
+      KEYCLOAK_CLIENT_ID: qa-dock-client
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    networks:
+      - qa_dock_net
+
+  # ----------------------------------------------------
+  # 4. React Frontend (Vite + Nginx) Service
+  # ----------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: qa_dock_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - qa_dock_net
+
+# ------------------------------------------------------
+# Networks & Persistent Storage Volumes
+# ------------------------------------------------------
+networks:
+  qa_dock_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

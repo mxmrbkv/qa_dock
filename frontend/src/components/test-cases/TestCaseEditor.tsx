@@ -1,0 +1,537 @@
+import React, { useState, useEffect } from 'react';
+import {
+  X,
+  Plus,
+  Trash2,
+  GripVertical,
+  Bot,
+  Tag as TagIcon,
+  CheckCircle2,
+  AlertCircle,
+  Copy,
+  Layers,
+} from 'lucide-react';
+import { useAppStore } from '../../store/useAppStore';
+import { api } from '../../lib/api';
+import { cn } from '../../lib/utils';
+
+interface Step {
+  id?: string;
+  action: string;
+  expectedResult: string;
+  stepOrder: number;
+}
+
+interface Tag {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface TestCaseEditorProps {
+  onSaved: () => void;
+}
+
+export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
+  const { currentProject, editingTestCaseId, closeEditor } = useAppStore();
+
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [preConditions, setPreConditions] = useState('');
+  const [postConditions, setPostConditions] = useState('');
+  const [priority, setPriority] = useState<'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'>('MEDIUM');
+  const [status, setStatus] = useState<'DRAFT' | 'ACTIVE' | 'DEPRECATED'>('ACTIVE');
+  const [isAutomated, setIsAutomated] = useState(false);
+  const [automationId, setAutomationId] = useState('');
+  const [steps, setSteps] = useState<Step[]>([
+    { action: 'Открыть целевую страницу в браузере', expectedResult: 'Страница успешно загрузилась без ошибок', stepOrder: 0 },
+  ]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
+  const [newTagName, setNewTagName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
+  // Load available tags
+  useEffect(() => {
+    if (!currentProject?.id) return;
+    api.get(`/projects/${currentProject.id}/tags`).then((res) => {
+      setAvailableTags(res.data);
+    }).catch(console.error);
+  }, [currentProject?.id]);
+
+  // Load existing test case if editing
+  useEffect(() => {
+    if (editingTestCaseId && currentProject?.id) {
+      setIsLoading(true);
+      api
+        .get(`/projects/${currentProject.id}/test-cases/${editingTestCaseId}`)
+        .then((res) => {
+          const tc = res.data;
+          setTitle(tc.title || '');
+          setDescription(tc.description || '');
+          setPreConditions(tc.preConditions || '');
+          setPostConditions(tc.postConditions || '');
+          setPriority(tc.priority || 'MEDIUM');
+          setStatus(tc.status || 'ACTIVE');
+          setIsAutomated(tc.isAutomated || false);
+          setAutomationId(tc.automationId || '');
+          setSelectedTagIds((tc.tags || []).map((t: Tag) => t.id));
+          if (tc.steps && tc.steps.length > 0) {
+            setSteps(tc.steps);
+          }
+        })
+        .catch(console.error)
+        .finally(() => setIsLoading(false));
+    }
+  }, [editingTestCaseId, currentProject?.id]);
+
+  // Step Management
+  const addStep = () => {
+    setSteps((prev) => [
+      ...prev,
+      { action: '', expectedResult: '', stepOrder: prev.length },
+    ]);
+  };
+
+  const updateStep = (index: number, field: 'action' | 'expectedResult', value: string) => {
+    setSteps((prev) =>
+      prev.map((step, idx) =>
+        idx === index ? { ...step, [field]: value } : step,
+      ),
+    );
+  };
+
+  const removeStep = (index: number) => {
+    if (steps.length <= 1) return;
+    setSteps((prev) => prev.filter((_, idx) => idx !== index).map((s, idx) => ({ ...s, stepOrder: idx })));
+  };
+
+  const cloneStep = (index: number) => {
+    const stepToClone = steps[index];
+    const newSteps = [...steps];
+    newSteps.splice(index + 1, 0, {
+      ...stepToClone,
+      id: undefined,
+      stepOrder: index + 1,
+    });
+    setSteps(newSteps.map((s, idx) => ({ ...s, stepOrder: idx })));
+  };
+
+  // Drag-and-Drop Step Reordering
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === targetIndex) return;
+
+    const reordered = [...steps];
+    const [draggedItem] = reordered.splice(draggedIndex, 1);
+    reordered.splice(targetIndex, 0, draggedItem);
+
+    setSteps(reordered.map((s, idx) => ({ ...s, stepOrder: idx })));
+    setDraggedIndex(targetIndex);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+  };
+
+  // Tags
+  const toggleTag = (tagId: string) => {
+    setSelectedTagIds((prev) =>
+      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId],
+    );
+  };
+
+  const handleCreateTag = async () => {
+    if (!newTagName.trim() || !currentProject?.id) return;
+    try {
+      const res = await api.post(`/projects/${currentProject.id}/tags`, {
+        name: newTagName.trim(),
+        color: '#3B82F6',
+      });
+      setAvailableTags((prev) => [...prev, res.data]);
+      setSelectedTagIds((prev) => [...prev, res.data.id]);
+      setNewTagName('');
+    } catch (err) {
+      console.error('Failed to create tag', err);
+    }
+  };
+
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Save
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaveError(null);
+
+    if (!title.trim()) {
+      setSaveError('Пожалуйста, укажите название тест-кейса.');
+      return;
+    }
+
+    if (!currentProject?.id) {
+      setSaveError('Ошибка: проект не выбран. Пожалуйста, выберите проект в левом меню.');
+      return;
+    }
+
+    setIsSaving(true);
+
+    // Clean steps and ensure every step has non-empty action and expectedResult
+    const validSteps = steps
+      .filter((s) => s.action.trim() || s.expectedResult.trim())
+      .map((s, idx) => ({
+        id: s.id,
+        action: s.action.trim() || 'Выполнить шаг теста',
+        expectedResult: s.expectedResult.trim() || 'Шаг выполнен успешно',
+        stepOrder: idx,
+      }));
+
+    const payload = {
+      title: title.trim(),
+      description: description.trim() || undefined,
+      preConditions: preConditions.trim() || undefined,
+      postConditions: postConditions.trim() || undefined,
+      priority,
+      status,
+      isAutomated,
+      automationId: isAutomated && automationId.trim() ? automationId.trim() : undefined,
+      tagIds: selectedTagIds,
+      steps: validSteps.length > 0 ? validSteps : undefined,
+    };
+
+    try {
+      if (editingTestCaseId) {
+        await api.patch(
+          `/projects/${currentProject.id}/test-cases/${editingTestCaseId}`,
+          payload,
+        );
+      } else {
+        await api.post(`/projects/${currentProject.id}/test-cases`, payload);
+      }
+      onSaved();
+      closeEditor();
+    } catch (err: any) {
+      console.error('Failed to save test case', err);
+      const msg = err.response?.data?.message;
+      if (Array.isArray(msg)) {
+        setSaveError(msg.join(', '));
+      } else {
+        setSaveError(msg || 'Не удалось сохранить тест-кейс. Проверьте соединение с сервером.');
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-[#0f172a] border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        {/* Modal Header */}
+        <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between bg-[#131d36]/80 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center font-bold text-xs">
+              {editingTestCaseId ? 'Редакт.' : 'Новый'}
+            </div>
+            <h2 className="text-base font-bold text-slate-100">
+              {editingTestCaseId ? 'Редактирование тест-кейса' : 'Создание нового тест-кейса'}
+            </h2>
+          </div>
+          <button
+            onClick={closeEditor}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        {isLoading ? (
+          <div className="p-12 text-center text-slate-400">Загрузка данных тест-кейса...</div>
+        ) : (
+          <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-6">
+            {saveError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{saveError}</span>
+              </div>
+            )}
+
+            {/* Title & Priority Row */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="md:col-span-3 space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300">
+                  Название тест-кейса <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="например, Проверка авторизации через Google OAuth 2.0"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300">Приоритет</label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value as any)}
+                  className="w-full px-3 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors"
+                >
+                  <option value="LOW">🟢 Низкий</option>
+                  <option value="MEDIUM">🟡 Средний</option>
+                  <option value="HIGH">🟠 Высокий</option>
+                  <option value="CRITICAL">🔴 Критический</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Status & Automation Row */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300">Жизненный цикл</label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as any)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="ACTIVE">Активный (Готов)</option>
+                  <option value="DRAFT">Черновик (В работе)</option>
+                  <option value="DEPRECATED">Устаревший</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5 md:col-span-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    <Bot className="w-3.5 h-3.5 text-cyan-400" />
+                    Привязка к автотестам
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-400">
+                    <input
+                      type="checkbox"
+                      checked={isAutomated}
+                      onChange={(e) => setIsAutomated(e.target.checked)}
+                      className="rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-0"
+                    />
+                    <span>Автоматизирован</span>
+                  </label>
+                </div>
+                {isAutomated ? (
+                  <input
+                    type="text"
+                    placeholder="например, tests.e2e.auth#test_google_login"
+                    value={automationId}
+                    onChange={(e) => setAutomationId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-cyan-500/40 text-xs text-cyan-300 font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                  />
+                ) : (
+                  <div className="text-[11px] text-slate-500 py-1.5">
+                    Включите флажок выше, чтобы связать кейс с идентификатором теста в Playwright, Pytest или JUnit.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Tags Selector */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <TagIcon className="w-3.5 h-3.5 text-blue-400" />
+                Теги
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                {availableTags.map((tag) => {
+                  const isSelected = selectedTagIds.includes(tag.id);
+                  return (
+                    <button
+                      type="button"
+                      key={tag.id}
+                      onClick={() => toggleTag(tag.id)}
+                      className={cn(
+                        'px-2.5 py-1 rounded-full text-xs font-medium border transition-all flex items-center gap-1.5',
+                        isSelected
+                          ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-500/20'
+                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700',
+                      )}
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: tag.color || '#3B82F6' }}
+                      />
+                      {tag.name}
+                    </button>
+                  );
+                })}
+
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    placeholder="+ Новый тег"
+                    value={newTagName}
+                    onChange={(e) => setNewTagName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleCreateTag();
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 w-24"
+                  />
+                  {newTagName.trim() && (
+                    <button
+                      type="button"
+                      onClick={handleCreateTag}
+                      className="p-1 rounded-full bg-blue-600 text-white hover:bg-blue-500 text-xs"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Description & Pre/Post conditions */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300">Предусловия (Pre-Conditions)</label>
+                <textarea
+                  rows={2}
+                  placeholder="например, Пользователь зарегистрирован и находится на странице входа"
+                  value={preConditions}
+                  onChange={(e) => setPreConditions(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-none"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300">Постусловия (Post-Conditions)</label>
+                <textarea
+                  rows={2}
+                  placeholder="например, Создана сессионная cookie и выполнен редирект в личный кабинет"
+                  value={postConditions}
+                  onChange={(e) => setPostConditions(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Dynamic Ordered Test Steps with Drag & Drop */}
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-blue-400" />
+                  Шаги тестирования ({steps.length})
+                </label>
+                <button
+                  type="button"
+                  onClick={addStep}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 hover:bg-blue-600/30 text-xs font-semibold transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Добавить шаг
+                </button>
+              </div>
+
+              <div className="space-y-2.5">
+                {steps.map((step, index) => (
+                  <div
+                    key={index}
+                    draggable
+                    onDragStart={() => handleDragStart(index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDragEnd={handleDragEnd}
+                    className={cn(
+                      'flex items-start gap-2.5 p-3 rounded-xl bg-slate-900/90 border border-slate-800 group transition-all',
+                      draggedIndex === index && 'opacity-40 border-blue-500 scale-[0.99]',
+                    )}
+                  >
+                    {/* Drag Handle */}
+                    <div
+                      className="cursor-grab active:cursor-grabbing p-1 text-slate-500 hover:text-slate-300 mt-1 shrink-0"
+                      title="Перетащите для изменения порядка шагов"
+                    >
+                      <GripVertical className="w-4 h-4" />
+                    </div>
+
+                    {/* Step Number */}
+                    <div className="w-6 h-6 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center text-xs font-bold shrink-0 mt-1">
+                      {index + 1}
+                    </div>
+
+                    {/* Action and Expected Result Fields */}
+                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      <div>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Действие (например, Нажать кнопку «Войти через Google»)"
+                          value={step.action}
+                          onChange={(e) => updateStep(index, 'action', e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg bg-[#0b0f19] border border-slate-700 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ожидаемый результат (например, Открывается форма выбора аккаунта)"
+                          value={step.expectedResult}
+                          onChange={(e) => updateStep(index, 'expectedResult', e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg bg-[#0b0f19] border border-slate-700 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => cloneStep(index)}
+                        title="Дублировать шаг"
+                        className="p-1.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeStep(index)}
+                        disabled={steps.length <= 1}
+                        title="Удалить шаг"
+                        className="p-1.5 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-30 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Sticky Submit Footer */}
+            <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3 sticky bottom-0 bg-[#0f172a]/90 backdrop-blur pb-2">
+              <button
+                type="button"
+                onClick={closeEditor}
+                className="px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+              >
+                Отмена
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all flex items-center gap-2"
+              >
+                {isSaving ? 'Сохранение...' : editingTestCaseId ? 'Сохранить изменения' : 'Создать тест-кейс'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+};

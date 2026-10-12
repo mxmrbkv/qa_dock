@@ -1,0 +1,219 @@
+// Prisma Schema for QA Dock - Test Management System (TMS)
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ------------------------------------------------------
+// Enums
+// ------------------------------------------------------
+
+enum Role {
+  ADMIN
+  LEAD_QA
+  QA_ENGINEER
+  DEVELOPER
+  VIEWER
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TestCaseStatus {
+  DRAFT
+  ACTIVE
+  DEPRECATED
+}
+
+enum TestPlanStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  ARCHIVED
+}
+
+enum TestRunStatus {
+  QUEUED
+  IN_PROGRESS
+  COMPLETED
+  ABORTED
+}
+
+enum TestResultStatus {
+  PASSED
+  FAILED
+  SKIPPED
+  BLOCKED
+}
+
+// ------------------------------------------------------
+// Core Entities
+// ------------------------------------------------------
+
+model User {
+  id            String         @id @default(uuid())
+  name          String
+  email         String         @unique
+  passwordHash  String         @map("password_hash")
+  role          Role           @default(QA_ENGINEER)
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  projectMembers ProjectMember[]
+  createdRuns    TestRun[]      @relation("RunCreator")
+
+  @@map("users")
+}
+
+model Project {
+  id          String         @id @default(uuid())
+  name        String
+  key         String         @unique // Short key like "PRJ", "QAD" for test case prefixes (e.g. QAD-101)
+  description String?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  members     ProjectMember[]
+  testCases   TestCase[]
+  tags        Tag[]
+  testPlans   TestPlan[]
+  testRuns    TestRun[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String   @id @default(uuid())
+  projectId String   @map("project_id")
+  userId    String   @map("user_id")
+  role      Role     @default(QA_ENGINEER)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+model TestCase {
+  id             String         @id @default(uuid())
+  projectId      String         @map("project_id")
+  automationId   String?        @map("automation_id") // Unique identifier used by automated test runners (e.g., class.method or unique test key)
+  title          String
+  description    String?
+  preConditions  String?        @map("pre_conditions")
+  postConditions String?        @map("post_conditions")
+  priority       Priority       @default(MEDIUM)
+  status         TestCaseStatus @default(ACTIVE)
+  isAutomated    Boolean        @default(false) @map("is_automated")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  steps          TestStep[]
+  tags           Tag[]          @relation("TestCaseTags")
+  testPlans      TestPlan[]     @relation("TestPlanCases")
+  testResults    TestResult[]
+
+  @@index([projectId, automationId])
+  @@index([projectId, status])
+  @@map("test_cases")
+}
+
+model TestStep {
+  id             String    @id @default(uuid())
+  testCaseId     String    @map("test_case_id")
+  action         String
+  expectedResult String    @map("expected_result")
+  stepOrder      Int       @map("step_order")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  testCase       TestCase  @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+
+  @@index([testCaseId, stepOrder])
+  @@map("test_steps")
+}
+
+model Tag {
+  id        String     @id @default(uuid())
+  projectId String     @map("project_id")
+  name      String
+  color     String     @default("#3B82F6") // Hex color for badge UI
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  testCases TestCase[] @relation("TestCaseTags")
+
+  @@unique([projectId, name])
+  @@map("tags")
+}
+
+model TestPlan {
+  id          String         @id @default(uuid())
+  projectId   String         @map("project_id")
+  title       String
+  description String?
+  status      TestPlanStatus @default(PLANNED)
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  testCases   TestCase[]     @relation("TestPlanCases")
+  testRuns    TestRun[]
+
+  @@index([projectId, status])
+  @@map("test_plans")
+}
+
+model TestRun {
+  id          String        @id @default(uuid())
+  projectId   String        @map("project_id")
+  testPlanId  String?       @map("test_plan_id")
+  createdById String?       @map("created_by_id")
+  title       String
+  environment String?       // e.g. "staging", "production", "ci-pipeline-42"
+  status      TestRunStatus @default(QUEUED)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  testPlan    TestPlan?     @relation(fields: [testPlanId], references: [id], onDelete: SetNull)
+  createdBy   User?         @relation("RunCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  testResults TestResult[]
+
+  @@index([projectId, status])
+  @@map("test_runs")
+}
+
+model TestResult {
+  id            String           @id @default(uuid())
+  testRunId     String           @map("test_run_id")
+  testCaseId    String           @map("test_case_id")
+  status        TestResultStatus @default(BLOCKED)
+  actualResult  String?          @map("actual_result")
+  executionTime Float?           @map("execution_time") // in seconds (supports fractional values from JUnit XML)
+  errorLogs     String?          @map("error_logs")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  testRun       TestRun          @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+  testCase      TestCase         @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+
+  @@unique([testRunId, testCaseId])
+  @@map("test_results")
+}

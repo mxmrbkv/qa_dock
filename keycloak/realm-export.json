@@ -1,0 +1,108 @@
+{
+  "id": "qa-dock",
+  "realm": "qa-dock",
+  "displayName": "QA Dock TMS",
+  "displayNameHtml": "<b>QA DOCK</b> TMS",
+  "enabled": true,
+  "sslRequired": "NONE",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": false,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "accessTokenLifespan": 3600,
+  "ssoSessionIdleTimeout": 86400,
+  "ssoSessionMaxLifespan": 259200,
+  "roles": {
+    "realm": [
+      {
+        "id": "role-admin",
+        "name": "admin",
+        "description": "Administrator Role with full access to QA Dock",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "id": "role-qa-engineer",
+        "name": "qa_engineer",
+        "description": "QA Engineer Role with test management access",
+        "composite": false,
+        "clientRole": false
+      }
+    ]
+  },
+  "defaultRoles": [
+    "qa_engineer"
+  ],
+  "clients": [
+    {
+      "id": "client-qa-dock-web",
+      "clientId": "qa-dock-client",
+      "name": "QA Dock Web Client",
+      "description": "Frontend and API integration client for QA Dock",
+      "enabled": true,
+      "alwaysDisplayInConsole": true,
+      "clientAuthenticatorType": "client-secret",
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000/*",
+        "http://127.0.0.1:3000",
+        "*"
+      ],
+      "webOrigins": [
+        "*"
+      ],
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true
+    }
+  ],
+  "users": [
+    {
+      "id": "user-admin-keycloak-id",
+      "username": "admin",
+      "email": "admin@qadock.dev",
+      "firstName": "Admin",
+      "lastName": "QA Dock",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Password123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin"
+      ]
+    },
+    {
+      "id": "user-tester-keycloak-id",
+      "username": "tester",
+      "email": "tester@qadock.dev",
+      "firstName": "Тестировщик",
+      "lastName": "QA",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Password123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "qa_engineer"
+      ]
+    }
+  ]
+}
