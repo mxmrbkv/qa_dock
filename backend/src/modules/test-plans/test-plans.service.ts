@@ -21,6 +21,7 @@ export class TestPlansService {
       include: {
         testCases: {
           include: {
+            suite: { select: { id: true, name: true } },
             tags: true,
             steps: { orderBy: { stepOrder: 'asc' } },
           },
@@ -50,6 +51,7 @@ export class TestPlansService {
       include: {
         testCases: {
           include: {
+            suite: { select: { id: true, name: true } },
             tags: true,
             steps: { orderBy: { stepOrder: 'asc' } },
           },

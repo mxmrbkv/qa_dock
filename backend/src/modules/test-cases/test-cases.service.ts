@@ -97,6 +97,14 @@ export class TestCasesService {
       };
     }
 
+    if (filter.suiteId) {
+      if (filter.suiteId === 'root' || filter.suiteId === 'none') {
+        where.suiteId = null;
+      } else {
+        where.suiteId = filter.suiteId;
+      }
+    }
+
     const page = filter.page || 1;
     const limit = filter.limit || 50;
     const skip = (page - 1) * limit;
@@ -109,6 +117,9 @@ export class TestCasesService {
       this.prisma.testCase.findMany({
         where,
         include: {
+          suite: {
+            select: { id: true, name: true },
+          },
           steps: {
             orderBy: { stepOrder: 'asc' },
             include: {
@@ -316,6 +327,13 @@ export class TestCasesService {
             }),
           ),
         );
+        return { success: true, count: caseIds.length };
+
+      case 'SET_SUITE':
+        await this.prisma.testCase.updateMany({
+          where: { id: { in: caseIds }, projectId },
+          data: { suiteId: dto.suiteId || null },
+        });
         return { success: true, count: caseIds.length };
 
       default:

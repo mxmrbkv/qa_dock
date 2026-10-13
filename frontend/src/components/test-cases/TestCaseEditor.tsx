@@ -6,20 +6,20 @@ import {
   GripVertical,
   Bot,
   Tag as TagIcon,
-  CheckCircle2,
-  AlertCircle,
-  Copy,
-  Layers,
   Sparkles,
   ChevronDown,
   ChevronRight,
-  ExternalLink,
   Unlink,
+  AlertCircle,
+  Copy,
+  Layers,
+  Folder,
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { api } from '../../lib/api';
 import { cn } from '../../lib/utils';
 import { SharedStepsModal, TestCaseItem } from './SharedStepsModal';
+import { useToast } from '../ui/Toast';
 
 interface Step {
   id?: string;
@@ -38,12 +38,16 @@ interface Tag {
 
 interface TestCaseEditorProps {
   onSaved: () => void;
+  defaultSuiteId?: string | null;
 }
 
-export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
+export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved, defaultSuiteId }) => {
   const { currentProject, editingTestCaseId, closeEditor } = useAppStore();
+  const toast = useToast();
 
   const [title, setTitle] = useState('');
+  const [suiteId, setSuiteId] = useState<string>(defaultSuiteId || '');
+  const [availableSuites, setAvailableSuites] = useState<{ id: string; name: string }[]>([]);
   const [description, setDescription] = useState('');
   const [preConditions, setPreConditions] = useState('');
   const [postConditions, setPostConditions] = useState('');
@@ -67,11 +71,15 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
   const [sharedModalMode, setSharedModalMode] = useState<'preconditions' | 'steps'>('steps');
   const [expandedSharedStepIndices, setExpandedSharedStepIndices] = useState<number[]>([]);
 
-  // Load available tags
+  // Load available tags and suites
   useEffect(() => {
     if (!currentProject?.id) return;
     api.get(`/projects/${currentProject.id}/tags`).then((res) => {
       setAvailableTags(res.data);
+    }).catch(console.error);
+
+    api.get(`/projects/${currentProject.id}/suites`).then((res) => {
+      setAvailableSuites(res.data.suites || []);
     }).catch(console.error);
   }, [currentProject?.id]);
 
@@ -84,6 +92,7 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
         .then((res) => {
           const tc = res.data;
           setTitle(tc.title || '');
+          setSuiteId(tc.suiteId || '');
           setDescription(tc.description || '');
           setPreConditions(tc.preConditions || '');
           setPostConditions(tc.postConditions || '');
@@ -102,89 +111,82 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
     }
   }, [editingTestCaseId, currentProject?.id]);
 
-  // Step Management
+  // Steps actions
   const addStep = () => {
-    setSteps((prev) => [
-      ...prev,
-      { action: '', expectedResult: '', stepOrder: prev.length },
+    setSteps([
+      ...steps,
+      { action: '', expectedResult: '', stepOrder: steps.length },
     ]);
-  };
-
-  const updateStep = (index: number, field: 'action' | 'expectedResult', value: string) => {
-    setSteps((prev) =>
-      prev.map((step, idx) =>
-        idx === index ? { ...step, [field]: value } : step,
-      ),
-    );
   };
 
   const removeStep = (index: number) => {
     if (steps.length <= 1) return;
-    setSteps((prev) => prev.filter((_, idx) => idx !== index).map((s, idx) => ({ ...s, stepOrder: idx })));
+    const updated = steps.filter((_, idx) => idx !== index).map((s, idx) => ({ ...s, stepOrder: idx }));
+    setSteps(updated);
   };
 
   const cloneStep = (index: number) => {
-    const stepToClone = steps[index];
-    const newSteps = [...steps];
-    newSteps.splice(index + 1, 0, {
-      ...stepToClone,
-      id: undefined,
-      stepOrder: index + 1,
-    });
-    setSteps(newSteps.map((s, idx) => ({ ...s, stepOrder: idx })));
+    const target = steps[index];
+    const newStep = { ...target, id: undefined, stepOrder: index + 1 };
+    const updated = [...steps];
+    updated.splice(index + 1, 0, newStep);
+    setSteps(updated.map((s, idx) => ({ ...s, stepOrder: idx })));
   };
 
-  // Toggle expanded nested steps of a shared step
-  const toggleSharedStepExpand = (index: number) => {
-    setExpandedSharedStepIndices((prev) =>
-      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index],
-    );
+  const updateStep = (index: number, field: 'action' | 'expectedResult', value: string) => {
+    const updated = [...steps];
+    updated[index] = { ...updated[index], [field]: value };
+    setSteps(updated);
   };
 
-  // Unlink/Unpack a shared step into editable plain steps
-  const unpackSharedStep = (index: number) => {
-    const step = steps[index];
-    const subSteps = step.sharedTestCase?.steps;
-    if (Array.isArray(subSteps) && subSteps.length > 0) {
-      const unpacked = subSteps.map((s: any) => ({
-        action: s.action,
-        expectedResult: s.expectedResult,
-        stepOrder: 0,
-      }));
-      const newSteps = [...steps];
-      newSteps.splice(index, 1, ...unpacked);
-      setSteps(newSteps.map((s, idx) => ({ ...s, stepOrder: idx })));
-    } else {
-      // Just remove the shared reference
-      updateStep(index, 'action', step.action.replace('⚡ [Общие шаги] ', ''));
-      setSteps((prev) =>
-        prev.map((s, idx) => (idx === index ? { ...s, sharedTestCaseId: undefined, sharedTestCase: undefined } : s)),
-      );
-    }
-  };
-
-  // Drag-and-Drop Step Reordering
+  // Drag and drop steps reordering
   const handleDragStart = (index: number) => {
     setDraggedIndex(index);
   };
 
-  const handleDragOver = (e: React.DragEvent, targetIndex: number) => {
+  const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    if (draggedIndex === null || draggedIndex === targetIndex) return;
-
-    const reordered = [...steps];
-    const [draggedItem] = reordered.splice(draggedIndex, 1);
-    reordered.splice(targetIndex, 0, draggedItem);
-
-    setSteps(reordered.map((s, idx) => ({ ...s, stepOrder: idx })));
-    setDraggedIndex(targetIndex);
+    if (draggedIndex === null || draggedIndex === index) return;
+    const updated = [...steps];
+    const draggedItem = updated[draggedIndex];
+    updated.splice(draggedIndex, 1);
+    updated.splice(index, 0, draggedItem);
+    setDraggedIndex(index);
+    setSteps(updated.map((s, idx) => ({ ...s, stepOrder: idx })));
   };
 
   const handleDragEnd = () => {
     setDraggedIndex(null);
   };
 
-  // Tags
+  const toggleSharedStepExpand = (index: number) => {
+    setExpandedSharedStepIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index],
+    );
+  };
+
+  const unpackSharedStep = (index: number) => {
+    const step = steps[index];
+    const subSteps: Step[] = (step.sharedTestCase?.steps || []).map((s: any, idx: number) => ({
+      action: s.action,
+      expectedResult: s.expectedResult,
+      stepOrder: index + idx,
+    }));
+
+    if (subSteps.length === 0) {
+      updateStep(index, 'action', step.action.replace('⚡ [Общие шаги] ', ''));
+      const updated = [...steps];
+      delete updated[index].sharedTestCaseId;
+      delete updated[index].sharedTestCase;
+      setSteps(updated);
+      return;
+    }
+
+    const updated = [...steps];
+    updated.splice(index, 1, ...subSteps);
+    setSteps(updated.map((s, idx) => ({ ...s, stepOrder: idx })));
+  };
+
   const toggleTag = (tagId: string) => {
     setSelectedTagIds((prev) =>
       prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId],
@@ -196,7 +198,7 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
     try {
       const res = await api.post(`/projects/${currentProject.id}/tags`, {
         name: newTagName.trim(),
-        color: '#3B82F6',
+        color: '#4F46E5',
       });
       setAvailableTags((prev) => [...prev, res.data]);
       setSelectedTagIds((prev) => [...prev, res.data.id]);
@@ -233,7 +235,6 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
       }
       setSteps((prev) => [...prev, ...importedSteps].map((s, idx) => ({ ...s, stepOrder: idx })));
     } else {
-      // As referenced shared step module
       const newStep: Step = {
         action: `⚡ [Общие шаги] ${testCase.title}`,
         expectedResult: `Все проверки кейса "${testCase.title}" пройдены успешно (${testCase.steps?.length || 0} шагов)`,
@@ -242,14 +243,12 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
         sharedTestCase: testCase,
       };
       setSteps((prev) => [...prev, newStep].map((s, idx) => ({ ...s, stepOrder: idx })));
-      // Expand newly added step so QA engineer sees what's inside
       setExpandedSharedStepIndices((prev) => [...prev, steps.length]);
     }
   };
 
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Save
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaveError(null);
@@ -266,7 +265,6 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
 
     setIsSaving(true);
 
-    // Clean steps and ensure every step has non-empty action and expectedResult
     const validSteps = steps
       .filter((s) => s.action.trim() || s.expectedResult.trim())
       .map((s, idx) => ({
@@ -279,6 +277,7 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
 
     const payload = {
       title: title.trim(),
+      suiteId: suiteId ? suiteId : null,
       description: description.trim() || undefined,
       preConditions: preConditions.trim() || undefined,
       postConditions: postConditions.trim() || undefined,
@@ -297,19 +296,19 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
           `/projects/${currentProject.id}/test-cases/${editingTestCaseId}`,
           payload,
         );
+        toast.success('Тест-кейс обновлён', `«${title.trim()}» успешно сохранён`);
       } else {
         await api.post(`/projects/${currentProject.id}/test-cases`, payload);
+        toast.success('Тест-кейс создан', `«${title.trim()}» добавлен в проект`);
       }
       onSaved();
       closeEditor();
     } catch (err: any) {
       console.error('Failed to save test case', err);
       const msg = err.response?.data?.message;
-      if (Array.isArray(msg)) {
-        setSaveError(msg.join(', '));
-      } else {
-        setSaveError(msg || 'Не удалось сохранить тест-кейс. Проверьте соединение с сервером.');
-      }
+      const errorMsg = Array.isArray(msg) ? msg.join(', ') : (msg || 'Не удалось сохранить тест-кейс.');
+      setSaveError(errorMsg);
+      toast.error('Ошибка сохранения', errorMsg);
     } finally {
       setIsSaving(false);
     }
@@ -317,20 +316,20 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-        <div className="bg-[#0f172a] border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-150">
+        <div className="bg-white dark:bg-[#0c101c] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
           {/* Modal Header */}
-          <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between bg-[#131d36]/80 shrink-0">
+          <div className="px-6 py-3.5 border-b border-slate-200/90 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/70 dark:bg-[#0e1424] shrink-0">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center font-bold text-xs">
-                {editingTestCaseId ? 'Редакт.' : 'Новый'}
+              <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-400 dark:border-indigo-800/50 flex items-center justify-center font-bold text-xs">
+                {editingTestCaseId ? 'РЕД' : 'НОВ'}
               </div>
               <div>
-                <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                  <span>{editingTestCaseId ? 'Редактирование тест-кейса' : 'Создание нового тест-кейса'}</span>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>{editingTestCaseId ? 'Редактирование тест-кейса' : 'Новый тест-кейс'}</span>
                   {isShared && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" />
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/30 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-indigo-500" />
                       Общий тест-кейс
                     </span>
                   )}
@@ -339,29 +338,29 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
             </div>
             <button
               onClick={closeEditor}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
 
           {/* Modal Body */}
           {isLoading ? (
-            <div className="p-12 text-center text-slate-400">Загрузка данных тест-кейса...</div>
+            <div className="p-12 text-center text-slate-400 text-xs">Загрузка данных тест-кейса...</div>
           ) : (
-            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-6">
+            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-5 space-y-4">
               {saveError && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <div className="p-3 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/30 dark:border-rose-800 dark:text-rose-400 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{saveError}</span>
                 </div>
               )}
 
-              {/* Title & Priority Row */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="md:col-span-3 space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">
-                    Название тест-кейса <span className="text-rose-500">*</span>
+              {/* Title, Suite & Priority Row */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-6 space-y-1">
+                  <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Название кейса <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -369,16 +368,35 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
                     placeholder="например, Проверка авторизации через Google OAuth 2.0"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition-colors"
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Приоритет</label>
+                <div className="md:col-span-3 space-y-1">
+                  <label className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                    <Folder className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Тест-сьют / Папка</span>
+                  </label>
+                  <select
+                    value={suiteId}
+                    onChange={(e) => setSuiteId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-colors"
+                  >
+                    <option value="">Без папки (Общий список)</option>
+                    {availableSuites.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        📁 {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="md:col-span-3 space-y-1">
+                  <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Приоритет</label>
                   <select
                     value={priority}
                     onChange={(e) => setPriority(e.target.value as any)}
-                    className="w-full px-3 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-colors"
                   >
                     <option value="LOW">🟢 Низкий</option>
                     <option value="MEDIUM">🟡 Средний</option>
@@ -389,13 +407,13 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
               </div>
 
               {/* Status, Shared & Automation Row */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Жизненный цикл</label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50/70 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800/80">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Жизненный цикл</label>
                   <select
                     value={status}
                     onChange={(e) => setStatus(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
                   >
                     <option value="ACTIVE">Активный (Готов)</option>
                     <option value="DRAFT">Черновик (В работе)</option>
@@ -405,27 +423,25 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
 
                 <div className="space-y-2 md:col-span-2">
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    {/* Reusable Shared Steps Checkbox */}
-                    <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-indigo-300 bg-indigo-500/10 px-2.5 py-1.5 rounded-lg border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/30 px-2 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800/50 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 transition-colors">
                       <input
                         type="checkbox"
                         checked={isShared}
                         onChange={(e) => setIsShared(e.target.checked)}
-                        className="rounded border-slate-700 bg-slate-900 text-indigo-500 focus:ring-0"
+                        className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-0"
                       />
-                      <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>Общий тест-кейс (Шаблон общих шагов)</span>
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+                      <span>Общий тест-кейс (Шаблон шагов)</span>
                     </label>
 
-                    {/* Automation Checkbox */}
-                    <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-400">
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-600 dark:text-slate-400">
                       <input
                         type="checkbox"
                         checked={isAutomated}
                         onChange={(e) => setIsAutomated(e.target.checked)}
-                        className="rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-0"
+                        className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-0"
                       />
-                      <Bot className="w-3.5 h-3.5 text-cyan-400" />
+                      <Bot className="w-3.5 h-3.5 text-cyan-500" />
                       <span>Автоматизирован</span>
                     </label>
                   </div>
@@ -436,10 +452,10 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
                       placeholder="например, tests.e2e.auth#test_google_login"
                       value={automationId}
                       onChange={(e) => setAutomationId(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-cyan-500/40 text-xs text-cyan-300 font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                      className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-cyan-300 dark:border-cyan-500/40 text-xs text-cyan-700 dark:text-cyan-300 font-mono placeholder-slate-400 focus:outline-none focus:border-cyan-500"
                     />
                   ) : (
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
                       Флаг «Общий тест-кейс» делает данный кейс модулем шагов, доступным для повторного использования в других кейсах проекта.
                     </div>
                   )}
@@ -447,12 +463,12 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
               </div>
 
               {/* Tags Selector */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <TagIcon className="w-3.5 h-3.5 text-blue-400" />
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <TagIcon className="w-3.5 h-3.5 text-indigo-500" />
                   Теги
                 </label>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
                   {availableTags.map((tag) => {
                     const isSelected = selectedTagIds.includes(tag.id);
                     return (
@@ -461,15 +477,15 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
                         key={tag.id}
                         onClick={() => toggleTag(tag.id)}
                         className={cn(
-                          'px-2.5 py-1 rounded-full text-xs font-medium border transition-all flex items-center gap-1.5',
+                          'px-2 py-0.5 rounded-full text-xs font-medium border transition-all flex items-center gap-1.5',
                           isSelected
-                            ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-500/20'
-                            : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700',
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300',
                         )}
                       >
                         <span
-                          className="w-2 h-2 rounded-full"
-                          style={{ backgroundColor: tag.color || '#3B82F6' }}
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ backgroundColor: tag.color || '#4F46E5' }}
                         />
                         {tag.name}
                       </button>
@@ -488,13 +504,13 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
                           handleCreateTag();
                         }
                       }}
-                      className="px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 w-24"
+                      className="px-2 py-0.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:border-indigo-500 w-24"
                     />
                     {newTagName.trim() && (
                       <button
                         type="button"
                         onClick={handleCreateTag}
-                        className="p-1 rounded-full bg-blue-600 text-white hover:bg-blue-500 text-xs"
+                        className="p-1 rounded-full bg-indigo-600 text-white hover:bg-indigo-500 text-xs"
                       >
                         <Plus className="w-3 h-3" />
                       </button>
@@ -504,10 +520,10 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
               </div>
 
               {/* Description & Pre/Post conditions */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-slate-300">
+                    <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
                       Предусловия (Pre-Conditions)
                     </label>
                     <button
@@ -516,7 +532,7 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
                         setSharedModalMode('preconditions');
                         setIsSharedModalOpen(true);
                       }}
-                      className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+                      className="flex items-center gap-1 text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium transition-colors"
                       title="Выбрать готовый тест-кейс для вставки в предусловия"
                     >
                       <Sparkles className="w-3 h-3" />
@@ -524,31 +540,31 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
                     </button>
                   </div>
                   <textarea
-                    rows={3}
+                    rows={2}
                     placeholder="например, Пользователь зарегистрирован и находится на странице входа..."
                     value={preConditions}
                     onChange={(e) => setPreConditions(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-none"
+                    className="w-full px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500 resize-none"
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Постусловия (Post-Conditions)</label>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Постусловия (Post-Conditions)</label>
                   <textarea
-                    rows={3}
+                    rows={2}
                     placeholder="например, Создана сессионная cookie и выполнен редирект в личный кабинет..."
                     value={postConditions}
                     onChange={(e) => setPostConditions(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-none"
+                    className="w-full px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500 resize-none"
                   />
                 </div>
               </div>
 
               {/* Dynamic Ordered Test Steps with Drag & Drop */}
-              <div className="space-y-3 pt-2">
+              <div className="space-y-2.5 pt-1">
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-blue-400" />
+                  <label className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-indigo-500" />
                     Шаги тестирования ({steps.length})
                   </label>
 
@@ -559,25 +575,25 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
                         setSharedModalMode('steps');
                         setIsSharedModalOpen(true);
                       }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30 text-xs font-semibold transition-colors"
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-600/20 dark:text-indigo-300 dark:border-indigo-500/30 hover:bg-indigo-100 text-xs font-medium transition-colors"
                       title="Выбрать существующий тест-кейс и вставить его шаги"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                      <Sparkles className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
                       Вставить общие шаги
                     </button>
 
                     <button
                       type="button"
                       onClick={addStep}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 hover:bg-blue-600/30 text-xs font-semibold transition-colors"
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 text-xs font-medium transition-colors"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus className="w-3 h-3" />
                       Добавить шаг
                     </button>
                   </div>
                 </div>
 
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   {steps.map((step, index) => {
                     const isSharedStep = !!step.sharedTestCaseId;
                     const isExpanded = expandedSharedStepIndices.includes(index);
@@ -591,40 +607,37 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
                         onDragOver={(e) => handleDragOver(e, index)}
                         onDragEnd={handleDragEnd}
                         className={cn(
-                          'p-3 rounded-xl border transition-all space-y-2 group',
+                          'p-2.5 rounded-xl border transition-all space-y-1.5 group',
                           isSharedStep
-                            ? 'bg-gradient-to-r from-indigo-950/40 to-slate-900 border-indigo-500/40 shadow-sm'
-                            : 'bg-slate-900/90 border-slate-800',
-                          draggedIndex === index && 'opacity-40 border-blue-500 scale-[0.99]',
+                            ? 'bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-800/40 shadow-2xs'
+                            : 'bg-white dark:bg-[#0e1422] border-slate-200/90 dark:border-slate-800/80',
+                          draggedIndex === index && 'opacity-40 border-indigo-500 scale-[0.99]',
                         )}
                       >
-                        <div className="flex items-start gap-2.5">
-                          {/* Drag Handle */}
+                        <div className="flex items-start gap-2">
                           <div
-                            className="cursor-grab active:cursor-grabbing p-1 text-slate-500 hover:text-slate-300 mt-1 shrink-0"
+                            className="cursor-grab active:cursor-grabbing p-1 text-slate-400 hover:text-slate-600 mt-1 shrink-0"
                             title="Перетащите для изменения порядка шагов"
                           >
-                            <GripVertical className="w-4 h-4" />
+                            <GripVertical className="w-3.5 h-3.5" />
                           </div>
 
-                          {/* Step Number */}
                           <div
                             className={cn(
-                              'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-1',
+                              'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-1',
                               isSharedStep
-                                ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40'
-                                : 'bg-slate-800 text-slate-300',
+                                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
                             )}
                           >
                             {index + 1}
                           </div>
 
-                          {/* Action and Expected Result Fields */}
-                          <div className="flex-1 space-y-2">
+                          <div className="flex-1 space-y-1.5">
                             {isSharedStep && (
-                              <div className="flex items-center justify-between text-[11px] text-indigo-300">
-                                <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px]">
-                                  <Sparkles className="w-3 h-3 text-indigo-400" />
+                              <div className="flex items-center justify-between text-[11px] text-indigo-700 dark:text-indigo-300">
+                                <span className="flex items-center gap-1 font-bold uppercase tracking-wider text-[9px]">
+                                  <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
                                   Модуль общих шагов
                                 </span>
 
@@ -633,15 +646,15 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
                                     <button
                                       type="button"
                                       onClick={() => toggleSharedStepExpand(index)}
-                                      className="text-indigo-400 hover:text-indigo-200 transition-colors inline-flex items-center gap-1"
+                                      className="text-indigo-600 dark:text-indigo-400 hover:underline transition-colors inline-flex items-center gap-0.5 text-[10px]"
                                     >
                                       {isExpanded ? (
                                         <>
-                                          <ChevronDown className="w-3 h-3" /> Скрыть подшаги ({subSteps.length})
+                                          <ChevronDown className="w-3 h-3" /> Скрыть ({subSteps.length})
                                         </>
                                       ) : (
                                         <>
-                                          <ChevronRight className="w-3 h-3" /> Показать подшаги ({subSteps.length})
+                                          <ChevronRight className="w-3 h-3" /> Показать ({subSteps.length})
                                         </>
                                       )}
                                     </button>
@@ -651,7 +664,7 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
                                     type="button"
                                     onClick={() => unpackSharedStep(index)}
                                     title="Развернуть в обычные редактируемые шаги"
-                                    className="text-slate-400 hover:text-slate-200 transition-colors inline-flex items-center gap-1 text-[10px]"
+                                    className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors inline-flex items-center gap-0.5 text-[10px]"
                                   >
                                     <Unlink className="w-3 h-3" /> Развернуть
                                   </button>
@@ -659,7 +672,7 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
                               </div>
                             )}
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                               <div>
                                 <input
                                   type="text"
@@ -668,10 +681,10 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
                                   value={step.action}
                                   onChange={(e) => updateStep(index, 'action', e.target.value)}
                                   className={cn(
-                                    'w-full px-3 py-2 rounded-lg border text-xs focus:outline-none transition-colors',
+                                    'w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none transition-colors',
                                     isSharedStep
-                                      ? 'bg-indigo-950/20 border-indigo-500/40 text-indigo-100 focus:border-indigo-400 font-medium'
-                                      : 'bg-[#0b0f19] border-slate-700 text-slate-100 placeholder-slate-500 focus:border-blue-500',
+                                      ? 'bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-100 font-medium'
+                                      : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-indigo-500',
                                   )}
                                 />
                               </div>
@@ -683,23 +696,22 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
                                   value={step.expectedResult}
                                   onChange={(e) => updateStep(index, 'expectedResult', e.target.value)}
                                   className={cn(
-                                    'w-full px-3 py-2 rounded-lg border text-xs focus:outline-none transition-colors',
+                                    'w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none transition-colors',
                                     isSharedStep
-                                      ? 'bg-indigo-950/20 border-indigo-500/40 text-indigo-200 focus:border-indigo-400'
-                                      : 'bg-[#0b0f19] border-slate-700 text-slate-100 placeholder-slate-500 focus:border-blue-500',
+                                      ? 'bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200'
+                                      : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-indigo-500',
                                   )}
                                 />
                               </div>
                             </div>
                           </div>
 
-                          {/* Action Buttons */}
-                          <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                          <div className="flex items-center gap-0.5 shrink-0 mt-1">
                             <button
                               type="button"
                               onClick={() => cloneStep(index)}
                               title="Дублировать шаг"
-                              className="p-1.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+                              className="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
                             >
                               <Copy className="w-3.5 h-3.5" />
                             </button>
@@ -708,26 +720,26 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
                               onClick={() => removeStep(index)}
                               disabled={steps.length <= 1}
                               title="Удалить шаг"
-                              className="p-1.5 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-30 transition-colors"
+                              className="p-1 rounded text-slate-400 hover:text-rose-500 disabled:opacity-30 transition-colors"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
 
-                        {/* Accordion view for nested steps inside a shared step */}
+                        {/* Accordion view for nested steps */}
                         {isSharedStep && isExpanded && subSteps.length > 0 && (
-                          <div className="ml-10 p-2.5 rounded-lg bg-slate-950/80 border border-indigo-900/50 space-y-1.5 animate-in fade-in duration-150">
-                            <div className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">
+                          <div className="ml-8 p-2 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-indigo-100 dark:border-indigo-900/40 space-y-1">
+                            <div className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-0.5">
                               Вложенные шаги из «{step.sharedTestCase?.title || 'Общего кейса'}»:
                             </div>
                             {subSteps.map((sub: any, sIdx: number) => (
-                              <div key={sub.id || sIdx} className="text-[11px] text-slate-300 flex items-start gap-2 py-0.5">
-                                <span className="text-slate-500 font-mono text-[10px]">{sIdx + 1}.</span>
+                              <div key={sub.id || sIdx} className="text-[11px] text-slate-700 dark:text-slate-300 flex items-start gap-1.5 py-0.5">
+                                <span className="text-slate-400 font-mono text-[10px]">{sIdx + 1}.</span>
                                 <div>
-                                  <span className="text-slate-200 font-medium">{sub.action}</span>
-                                  <span className="text-slate-500 mx-1">&rarr;</span>
-                                  <span className="text-slate-400">{sub.expectedResult}</span>
+                                  <span className="font-medium">{sub.action}</span>
+                                  <span className="text-slate-400 mx-1">&rarr;</span>
+                                  <span className="text-slate-500 dark:text-slate-400">{sub.expectedResult}</span>
                                 </div>
                               </div>
                             ))}
@@ -740,18 +752,18 @@ export const TestCaseEditor: React.FC<TestCaseEditorProps> = ({ onSaved }) => {
               </div>
 
               {/* Sticky Submit Footer */}
-              <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3 sticky bottom-0 bg-[#0f172a]/90 backdrop-blur pb-2">
+              <div className="pt-3 border-t border-slate-200/90 dark:border-slate-800/90 flex items-center justify-end gap-2.5 sticky bottom-0 bg-white/95 dark:bg-[#0c101c]/95 backdrop-blur pb-1">
                 <button
                   type="button"
                   onClick={closeEditor}
-                  className="px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all flex items-center gap-2"
+                  className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold shadow-xs transition-all flex items-center gap-1.5"
                 >
                   {isSaving ? 'Сохранение...' : editingTestCaseId ? 'Сохранить изменения' : 'Создать тест-кейс'}
                 </button>

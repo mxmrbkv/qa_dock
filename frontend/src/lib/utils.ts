@@ -14,36 +14,40 @@ export function formatDuration(seconds?: number): string {
 export function getPriorityColor(priority: string) {
   switch (priority) {
     case 'CRITICAL':
-      return 'bg-red-500/15 text-red-400 border-red-500/30';
+      return 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-400 dark:border-rose-500/30';
     case 'HIGH':
-      return 'bg-orange-500/15 text-orange-400 border-orange-500/30';
+      return 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-500/15 dark:text-orange-400 dark:border-orange-500/30';
     case 'MEDIUM':
-      return 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+      return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30';
     case 'LOW':
-      return 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30';
     default:
-      return 'bg-slate-500/15 text-slate-400 border-slate-500/30';
+      return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-500/15 dark:text-slate-400 dark:border-slate-500/30';
   }
 }
 
 export function getStatusColor(status: string) {
   switch (status) {
     case 'PASSED':
-      return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/40';
     case 'FAILED':
-      return 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+      return 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40';
     case 'SKIPPED':
-      return 'bg-amber-500/20 text-amber-300 border-amber-500/40';
-    case 'BLOCKED':
-      return 'bg-slate-500/20 text-slate-300 border-slate-500/40';
+      return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40';
+    case 'PLANNED':
+      return 'bg-[#7700FF]/10 text-[#7700FF] border-[#7700FF]/30 dark:bg-[#7700FF]/20 dark:text-[#C084FC] dark:border-[#7700FF]/40';
+    case 'IN_PROGRESS':
+      return 'bg-[#FF4F12]/10 text-[#FF4F12] border-[#FF4F12]/30 dark:bg-[#FF4F12]/20 dark:text-[#FF8A65] dark:border-[#FF4F12]/40';
+    case 'COMPLETED':
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/40';
     case 'ACTIVE':
-      return 'bg-blue-500/20 text-blue-300 border-blue-500/40';
+      return 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/40';
     case 'DRAFT':
-      return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
+      return 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-500/20 dark:text-slate-400 dark:border-slate-500/30';
     case 'DEPRECATED':
-      return 'bg-red-500/20 text-red-400 border-red-500/30';
+      return 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:border-rose-500/30';
     default:
-      return 'bg-slate-500/20 text-slate-300 border-slate-500/40';
+      return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-500/20 dark:text-slate-300 dark:border-slate-500/40';
   }
 }
 
@@ -80,8 +84,12 @@ export function getStatusLabel(status?: string): string {
       return 'Устаревший';
     case 'COMPLETED':
       return 'Завершён';
-    case 'RUNNING':
+    case 'PLANNED':
+      return 'Запланирован';
+    case 'IN_PROGRESS':
       return 'В процессе';
+    case 'RUNNING':
+      return 'Выполняется';
     default:
       return status || '-';
   }

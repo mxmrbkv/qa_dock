@@ -18,6 +18,10 @@ export class CreateTestCaseDto {
 
   @IsOptional()
   @IsString()
+  suiteId?: string;
+
+  @IsOptional()
+  @IsString()
   description?: string;
 
   @IsOptional()

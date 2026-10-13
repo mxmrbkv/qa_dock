@@ -25,6 +25,10 @@ export class FilterTestCaseDto {
 
   @IsOptional()
   @IsString()
+  suiteId?: string;
+
+  @IsOptional()
+  @IsString()
   tagId?: string;
 
   @IsOptional()
@@ -54,8 +58,8 @@ export class BulkActionDto {
   caseIds: string[];
 
   @IsString()
-  @IsIn(['DELETE', 'SET_PRIORITY', 'SET_STATUS', 'ADD_TAG', 'REMOVE_TAG'])
-  action: 'DELETE' | 'SET_PRIORITY' | 'SET_STATUS' | 'ADD_TAG' | 'REMOVE_TAG';
+  @IsIn(['DELETE', 'SET_PRIORITY', 'SET_STATUS', 'ADD_TAG', 'REMOVE_TAG', 'SET_SUITE'])
+  action: 'DELETE' | 'SET_PRIORITY' | 'SET_STATUS' | 'ADD_TAG' | 'REMOVE_TAG' | 'SET_SUITE';
 
   @IsOptional()
   @IsEnum(Priority)
@@ -68,4 +72,8 @@ export class BulkActionDto {
   @IsOptional()
   @IsString()
   tagId?: string;
+
+  @IsOptional()
+  @IsString()
+  suiteId?: string;
 }

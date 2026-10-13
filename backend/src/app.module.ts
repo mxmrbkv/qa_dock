@@ -9,6 +9,8 @@ import { TestPlansModule } from './modules/test-plans/test-plans.module';
 import { TestRunsModule } from './modules/test-runs/test-runs.module';
 import { AutomationIntegrationModule } from './modules/automation-integration/automation-integration.module';
 
+import { TestSuitesModule } from './modules/test-suites/test-suites.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -18,6 +20,7 @@ import { AutomationIntegrationModule } from './modules/automation-integration/au
     PrismaModule,
     AuthModule,
     ProjectsModule,
+    TestSuitesModule,
     TestCasesModule,
     TagsModule,
     TestPlansModule,

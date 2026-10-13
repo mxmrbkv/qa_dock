@@ -11,6 +11,7 @@ import { TestPlansView } from './components/test-plans/TestPlansView';
 import { AutomationWebhookGuide } from './components/automation/AutomationWebhookGuide';
 import { CreateProjectModal } from './components/projects/CreateProjectModal';
 import { AuthModal } from './components/auth/AuthModal';
+import { ToastProvider } from './components/ui/Toast';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +29,7 @@ const MainDashboard: React.FC = () => {
     currentProject,
     setCurrentProject,
     activeTab,
+    selectedSuiteId,
     isEditorOpen,
     isAuthModalOpen,
     openAuthModal,
@@ -127,12 +129,12 @@ const MainDashboard: React.FC = () => {
 
   if (isKeycloakLoading) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#080b12] text-slate-100 flex-col gap-4">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-600 via-blue-600 to-indigo-600 flex items-center justify-center shadow-xl shadow-blue-500/30 animate-pulse">
-          <KeyRound className="w-7 h-7 text-white animate-spin" />
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-50 dark:bg-[#070a11] text-slate-900 dark:text-slate-100 flex-col gap-4">
+        <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 animate-pulse">
+          <KeyRound className="w-6 h-6 text-white animate-spin" />
         </div>
-        <div className="text-sm font-bold tracking-wide">Авторизация через Keycloak SSO...</div>
-        <div className="text-xs text-slate-500">Синхронизация профиля и ролей с QA Dock</div>
+        <div className="text-xs font-semibold tracking-wide">Авторизация через Keycloak SSO...</div>
+        <div className="text-[11px] text-slate-500 dark:text-slate-400">Синхронизация профиля и ролей с QA Dock</div>
       </div>
     );
   }
@@ -153,10 +155,12 @@ const MainDashboard: React.FC = () => {
         {/* Test Case Editor Drawer/Modal */}
         {isEditorOpen && (
           <TestCaseEditor
+            defaultSuiteId={selectedSuiteId}
             onSaved={() => {
               queryClient.invalidateQueries({ queryKey: ['test-cases'] });
               queryClient.invalidateQueries({ queryKey: ['projects'] });
               queryClient.invalidateQueries({ queryKey: ['test-cases-all'] });
+              queryClient.invalidateQueries({ queryKey: ['test-suites'] });
             }}
           />
         )}
@@ -188,7 +192,9 @@ const MainDashboard: React.FC = () => {
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <MainDashboard />
+      <ToastProvider>
+        <MainDashboard />
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

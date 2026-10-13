@@ -17,6 +17,10 @@ export class UpdateTestCaseDto {
 
   @IsOptional()
   @IsString()
+  suiteId?: string;
+
+  @IsOptional()
+  @IsString()
   description?: string;
 
   @IsOptional()
